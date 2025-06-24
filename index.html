@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>企鹅矿工</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            touch-action: manipulation;
+            overflow: hidden;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: auto;
+            aspect-ratio: 600/780;
+        }
+        
+        #game-canvas {
+            width: 100%;
+            height: 100%;
+            background-color: #87CEEB;
+            border: 3px solid #333;
+            border-radius: 5px;
+            display: block;
+        }
+        
+        #start-screen, #end-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 24px;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        .score-board {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        
+        .item-values {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-size: 14px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        
+        .score-value {
+            font-weight: bold;
+            font-size: 20px;
+        }
+        
+        #score-history {
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 10px;
+            border-radius: 5px;
+            width: 80%;
+        }
+
+        .rank-badge {
+            font-size: 32px;
+            margin: 10px 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 移动端优化 */
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            
+            #game-container {
+                max-width: 480px;
+                aspect-ratio: 480/624;
+            }
+            
+            #start-screen, #end-screen {
+                font-size: 20px;
+            }
+            
+            button {
+                font-size: 16px;
+                padding: 8px 16px;
+            }
+            
+            .score-board, .item-values {
+                font-size: 14px;
+            }
+            
+            .item-values {
+                font-size: 12px;
+            }
+            
+            .rank-badge {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        
+        <div id="start-screen">
+            <h1>💎企鹅的冰雪宝藏💎</h1>
+            <p>帮助企鹅挖掘冰层下的宝藏！</p>
+            <p>点击或按空格键发射钩子！</p>
+            <p>在限定时间内尽可能收集更多宝藏！</p>
+            <button id="start-button">开始游戏</button>
+        </div>
+        
+        <div id="end-screen" style="display: none;">
+            <h1 id="result-title">游戏结束</h1>
+            <div id="rank-display" class="rank-badge"></div>
+            <p>你的得分: <span id="final-score">0</span>分</p>
+            <p id="result-message"></p>
+            <div id="score-history"></div>
+            <button id="restart-button">再玩一次</button>
+        </div>
+        
+        <div class="score-board">
+            <div>分数: <span id="score">0</span></div>
+            <div>时间: <span id="time">42</span>秒</div>
+        </div>
+        
+        <div class="item-values">
+            <div>Q币: 888分</div>
+            <div>小金块: 100分</div>
+            <div>大金块: 250分</div>
+            <div>钻石: 800分</div>
+            <div>石头: 20分</div>
+        </div>
+    </div>
+
+    <audio id="bg-music" loop>
+        <source src="https://static-cos.mureka.ai/cos-prod/song/audio/20250418/music_67714704080897_6FbfkvhPZBsGpMHZrL2cor_vucnnd.mp3" type="audio/mpeg">
+    </audio>
+
+    <script>
+        // 游戏常量
+        const GAME_DURATION = 42;
+        
+        // 根据设备设置画布尺寸
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const CANVAS_WIDTH = isMobile ? 480 : 600;
+        const CANVAS_HEIGHT = isMobile ? 624 : 780;
+        const GROUND_HEIGHT = isMobile ? 120 : 150;
+        const PENGUIN_AREA_HEIGHT = CANVAS_HEIGHT * 0.2;
+        
+        // 游戏状态
+        let gameState = 'start';
+        let score = 0;
+        let timeLeft = GAME_DURATION;
+        let gameTimer;
+        let scoreHistory = [];
+        let snowflakes = [];
+        
+        // 获取DOM元素
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const endScreen = document.getElementById('end-screen');
+        const startButton = document.getElementById('start-button');
+        const restartButton = document.getElementById('restart-button');
+        const scoreDisplay = document.getElementById('score');
+        const timeDisplay = document.getElementById('time');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const resultTitle = document.getElementById('result-title');
+        const resultMessage = document.getElementById('result-message');
+        const scoreHistoryElement = document.getElementById('score-history');
+        const bgMusicElement = document.getElementById('bg-music');
+        const rankDisplay = document.getElementById('rank-display');
+        
+        // 设置画布尺寸
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+        
+        // 企鹅像素数据
+        const penguinPixels = [
+            [0,0,0,0,1,1,1,1,1,0,0,0,0],
+            [0,0,0,1,1,1,1,1,1,1,0,0,0],
+            [0,0,1,1,2,2,2,2,2,1,1,0,0],
+            [0,0,1,2,2,2,2,2,2,2,1,0,0],
+            [0,0,1,2,1,2,3,2,1,2,1,0,0],
+            [0,0,1,4,2,3,3,3,2,4,1,0,0],
+            [0,1,1,2,2,2,2,2,2,2,1,1,0],
+            [1,1,1,2,2,2,2,2,2,2,1,1,1],
+            [0,0,1,2,2,2,2,2,2,2,1,0,0],
+            [0,0,0,1,2,2,2,2,2,1,0,0,0],
+            [0,0,3,3,1,1,1,1,1,3,3,0,0]
+        ];
+        
+        const penguinColors = {
+            1: '#000',
+            2: '#FFF',
+            3: '#FD0',
+            4: '#FCC'
+        };
+        
+        // 钩子和物理系统
+        let hook = {
+            x: CANVAS_WIDTH / 2,
+            y: PENGUIN_AREA_HEIGHT - (isMobile ? 15 : 20),
+            length: isMobile ? 40 : 50,
+            angle: Math.PI,
+            angularVelocity: 0,
+            speed: 0.01,
+            maxAngle: Math.PI / 2,
+            state: 'swinging',
+            target: null,
+            retractSpeed: isMobile ? 6 : 8,
+            shootSpeed: isMobile ? 6 : 8,
+            endX: 0,
+            endY: 0
+        };
+        
+        // 游戏物品
+        const items = [];
+        
+        // 物品类型
+        const ITEM_TYPES = {
+            Q_COIN: {
+                name: 'Q币',
+                value: 888,
+                color: '#FFD700',
+                radius: isMobile ? 12 : 15,
+                weight: 0.3,
+                draw: function(ctx, x, y) {
+                    ctx.save();
+                    ctx.fillStyle = this.color;
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1;
+                    
+                    // 绘制圆形硬币
+                    ctx.beginPath();
+                    ctx.arc(x, y, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    // 绘制Q字母
+                    ctx.fillStyle = '#000';
+                    ctx.font = `bold ${this.radius * 1.2}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('Q', x, y);
+                    
+                    ctx.restore();
+                }
+            },
+            SMALL_GOLD: {
+                name: '小金块',
+                value: 100,
+                color: '#FFD700',
+                radius: isMobile ? 16 : 20,
+                weight: 1
+            },
+            BIG_GOLD: {
+                name: '大金块',
+                value: 250,
+                color: '#FFD700',
+                radius: isMobile ? 24 : 30,
+                weight: 3
+            },
+            DIAMOND: {
+                name: '钻石',
+                value: 800,
+                color: '#00BFFF',
+                radius: isMobile ? 12 : 15,
+                weight: 0.5,
+                draw: function(ctx, x, y) {
+                    ctx.save();
+                    ctx.fillStyle = this.color;
+                    ctx.strokeStyle = '#FFF';
+                    ctx.lineWidth = 2;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(x, y - this.radius);
+                    ctx.lineTo(x + this.radius, y);
+                    ctx.lineTo(x, y + this.radius);
+                    ctx.lineTo(x - this.radius, y);
+                    ctx.closePath();
+                    
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(x, y - this.radius);
+                    ctx.lineTo(x, y + this.radius);
+                    ctx.moveTo(x - this.radius, y);
+                    ctx.lineTo(x + this.radius, y);
+                    ctx.stroke();
+                    
+                    ctx.restore();
+                }
+            },
+            STONE: {
+                name: '石头',
+                value: 20,
+                color: '#A9A9A9',
+                radius: isMobile ? 20 : 25,
+                weight: 4
+            }
+        };
+
+        // 雪花类
+        class Snowflake {
+            constructor() {
+                this.x = Math.random() * CANVAS_WIDTH;
+                this.y = Math.random() * PENGUIN_AREA_HEIGHT;
+                this.size = Math.random() * 3 + 1;
+                this.speed = Math.random() * 0.5 + 0.2;
+            }
+
+            update() {
+                this.y += this.speed;
+                if (this.y > PENGUIN_AREA_HEIGHT) {
+                    this.y = 0;
+                    this.x = Math.random() * CANVAS_WIDTH;
+                }
+            }
+
+            draw(ctx) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        // 初始化游戏
+        function initGame() {
+            items.length = 0;
+            snowflakes = [];
+            
+            // 创建雪花
+            for (let i = 0; i < (isMobile ? 15 : 20); i++) {
+                snowflakes.push(new Snowflake());
+            }
+            
+            // 固定物品数量
+            createItems(ITEM_TYPES.Q_COIN, 1);
+            createItems(ITEM_TYPES.DIAMOND, 2);
+            createItems(ITEM_TYPES.BIG_GOLD, 4);
+            createItems(ITEM_TYPES.SMALL_GOLD, 8);
+            createItems(ITEM_TYPES.STONE, 7);
+            
+            hook = {
+                x: CANVAS_WIDTH / 2,
+                y: PENGUIN_AREA_HEIGHT - (isMobile ? 15 : 20),
+                length: isMobile ? 40 : 50,
+                angle: Math.PI,
+                angularVelocity: 0.01,
+                speed: 0.01,
+                maxAngle: Math.PI / 2,
+                state: 'swinging',
+                target: null,
+                retractSpeed: isMobile ? 6 : 8,
+                shootSpeed: isMobile ? 6 : 8,
+                endX: 0,
+                endY: 0
+            };
+            
+            score = 0;
+            timeLeft = GAME_DURATION;
+            scoreDisplay.textContent = score;
+            timeDisplay.textContent = timeLeft;
+        }
+        
+        function createItems(type, count) {
+            for (let i = 0; i < count; i++) {
+                let x, y, overlapping;
+                
+                do {
+                    overlapping = false;
+                    x = Math.random() * (CANVAS_WIDTH - type.radius * 4) + type.radius * 2;
+                    y = Math.random() * (CANVAS_HEIGHT - PENGUIN_AREA_HEIGHT - type.radius * 4) + PENGUIN_AREA_HEIGHT + type.radius * 2;
+                    
+                    for (const item of items) {
+                        const dx = x - item.x;
+                        const dy = y - item.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < type.radius + item.radius + 10) {
+                            overlapping = true;
+                            break;
+                        }
+                    }
+                } while (overlapping);
+                
+                items.push({
+                    type: type,
+                    x: x,
+                    y: y,
+                    radius: type.radius,
+                    collected: false
+                });
+            }
+        }
+        
+        function startGame() {
+            gameState = 'playing';
+            startScreen.style.display = 'none';
+            endScreen.style.display = 'none';
+            
+            initGame();
+            
+            bgMusicElement.volume = 0.3;
+            bgMusicElement.play().catch(e => console.log("自动播放被阻止:", e));
+            
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                timeDisplay.textContent = timeLeft;
+                
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // 获取玩家等级信息
+        function getRankInfo(score) {
+            const ranks = [
+                { threshold: 3500, rank: "🏆王者🏆", color: "#FFD700", title: "传说级矿工！", message: "你已掌握冰雪宝藏的终极奥秘！" },
+                { threshold: 2800, rank: "💎钻石💎", color: "#00BFFF", title: "大师级矿工！", message: "惊人的挖掘技术！" },
+                { threshold: 2100, rank: "🔶铂金🔶", color: "#E5E4E2", title: "专业矿工", message: "优秀的挖掘能力！" },
+                { threshold: 1400, rank: "🌟黄金🌟", color: "#FFD700", title: "熟练矿工", message: "已经掌握核心技巧！" },
+                { threshold: 700, rank: "🔘青铜🔘", color: "#CD7F32", title: "见习矿工", message: "还需要更多练习哦！" },
+                { threshold: 0, rank: "❄️新手❄️", color: "#FFFFFF", title: "冰雪学徒", message: "继续努力吧！" }
+            ];
+
+            return ranks.find(r => score >= r.threshold) || ranks[ranks.length-1];
+        }
+        
+        function endGame() {
+            gameState = 'end';
+            clearInterval(gameTimer);
+            bgMusicElement.pause();
+            
+            // 获取玩家等级信息
+            const rankInfo = getRankInfo(score);
+            
+            // 记录分数历史（包含等级）
+            scoreHistory.push({
+                date: new Date(),
+                score: score,
+                rank: rankInfo.rank
+            });
+            
+            // 显示分数历史
+            displayScoreHistory();
+            
+            endScreen.style.display = 'flex';
+            finalScoreDisplay.textContent = score;
+            
+            // 显示等级信息
+            rankDisplay.textContent = rankInfo.rank;
+            rankDisplay.style.color = rankInfo.color;
+            resultTitle.textContent = rankInfo.title;
+            resultMessage.textContent = rankInfo.message;
+        }
+        
+        function displayScoreHistory() {
+            scoreHistoryElement.innerHTML = '<h3>历史记录</h3>';
+            
+            // 按分数从高到低排序
+            const sortedHistory = [...scoreHistory].sort((a, b) => b.score - a.score);
+            
+            sortedHistory.forEach((record, index) => {
+                const dateStr = record.date.toLocaleString();
+                const scoreItem = document.createElement('div');
+                scoreItem.textContent = `${index + 1}. ${dateStr} - ${record.score}分(${record.rank})`;
+                scoreHistoryElement.appendChild(scoreItem);
+            });
+        }
+        
+        function gameLoop() {
+            if (gameState !== 'playing') return;
+            
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            drawBackground();
+            updateHook();
+            drawItems();
+            drawHook();
+            drawPenguin();
+            
+            // 更新和绘制雪花
+            snowflakes.forEach(snowflake => {
+                snowflake.update();
+                snowflake.draw(ctx);
+            });
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        function drawBackground() {
+            // 天空渐变
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, PENGUIN_AREA_HEIGHT);
+            skyGradient.addColorStop(0, '#1E90FF');
+            skyGradient.addColorStop(1, '#87CEEB');
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, PENGUIN_AREA_HEIGHT);
+            
+            // 地面（冰层）
+            ctx.fillStyle = '#E0FFFF';
+            ctx.fillRect(0, PENGUIN_AREA_HEIGHT, CANVAS_WIDTH, CANVAS_HEIGHT - PENGUIN_AREA_HEIGHT);
+            
+            // 地面上的雪
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.moveTo(0, PENGUIN_AREA_HEIGHT);
+            
+            for (let x = 0; x <= CANVAS_WIDTH; x += 20) {
+                const y = PENGUIN_AREA_HEIGHT + Math.sin(x * 0.03) * 10;
+                ctx.lineTo(x, y);
+            }
+            
+            ctx.lineTo(CANVAS_WIDTH, PENGUIN_AREA_HEIGHT);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        function updateHook() {
+            switch (hook.state) {
+                case 'swinging':
+                    // 更真实的钟摆物理效果
+                    const gravity = 0.001;
+                    hook.angularAcceleration = -gravity * Math.sin(hook.angle);
+                    hook.angularVelocity += hook.angularAcceleration;
+                    hook.angularVelocity *= 0.999; // 阻尼
+                    hook.angle += hook.angularVelocity;
+                    
+                    // 限制最大角度
+                    if (Math.abs(hook.angle) > hook.maxAngle) {
+                        hook.angle = Math.sign(hook.angle) * hook.maxAngle;
+                        hook.angularVelocity *= -0.7; // 反弹效果
+                    }
+                    
+                    hook.endX = hook.x + Math.sin(hook.angle) * hook.length;
+                    hook.endY = hook.y + Math.cos(hook.angle) * hook.length;
+                    break;
+                    
+                case 'shooting':
+                    hook.length += hook.shootSpeed;
+                    hook.endX = hook.x + Math.sin(hook.angle) * hook.length;
+                    hook.endY = hook.y + Math.cos(hook.angle) * hook.length;
+                    
+                    if (hook.endX < 0 || hook.endX > CANVAS_WIDTH || hook.endY > CANVAS_HEIGHT) {
+                        hook.state = 'returning';
+                        break;
+                    }
+                    
+                    for (const item of items) {
+                        if (!item.collected) {
+                            const dx = hook.endX - item.x;
+                            const dy = hook.endY - item.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            
+                            if (distance < item.radius) {
+                                hook.state = 'retracting';
+                                hook.target = item;
+                                item.collected = true;
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                    
+                case 'retracting':
+                    if (hook.target) {
+                        const speed = hook.retractSpeed / hook.target.type.weight;
+                        hook.length -= speed;
+                        
+                        // 钩子和物品一起移动
+                        hook.endX = hook.x + Math.sin(hook.angle) * hook.length;
+                        hook.endY = hook.y + Math.cos(hook.angle) * hook.length;
+                        hook.target.x = hook.endX;
+                        hook.target.y = hook.endY;
+                        
+                        if (hook.length <= (isMobile ? 40 : 50)) {
+                            score += hook.target.type.value;
+                            scoreDisplay.textContent = score;
+                            
+                            hook.state = 'swinging';
+                            hook.length = isMobile ? 40 : 50;
+                            hook.target = null;
+                        }
+                    } else {
+                        hook.state = 'returning';
+                    }
+                    break;
+                    
+                case 'returning':
+                    hook.length -= hook.retractSpeed;
+                    hook.endX = hook.x + Math.sin(hook.angle) * hook.length;
+                    hook.endY = hook.y + Math.cos(hook.angle) * hook.length;
+                    
+                    if (hook.length <= (isMobile ? 40 : 50)) {
+                        hook.length = isMobile ? 40 : 50;
+                        hook.state = 'swinging';
+                    }
+                    break;
+            }
+        }
+        
+        function drawHook() {
+            ctx.save();
+            
+            // 绳子
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(hook.x, hook.y);
+            ctx.lineTo(hook.endX, hook.endY);
+            ctx.stroke();
+            
+            // 钩子
+            ctx.fillStyle = '#A9A9A9';
+            ctx.beginPath();
+            ctx.arc(hook.endX, hook.endY, isMobile ? 4 : 5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(hook.endX, hook.endY);
+            ctx.lineTo(hook.endX + (isMobile ? 4 : 5) * Math.sin(hook.angle + Math.PI/2), 
+                       hook.endY + (isMobile ? 4 : 5) * Math.cos(hook.angle + Math.PI/2));
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(hook.endX, hook.endY);
+            ctx.lineTo(hook.endX + (isMobile ? 4 : 5) * Math.sin(hook.angle - Math.PI/2), 
+                       hook.endY + (isMobile ? 4 : 5) * Math.cos(hook.angle - Math.PI/2));
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        function drawItems() {
+            for (const item of items) {
+                if (!item.collected || hook.target === item) {
+                    if (item.type.draw) {
+                        item.type.draw(ctx, item.x, item.y);
+                    } else {
+                        ctx.save();
+                        ctx.fillStyle = item.type.color;
+                        ctx.beginPath();
+                        ctx.arc(item.x, item.y, item.radius, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                        ctx.beginPath();    
+                        ctx.arc(item.x - item.radius/3, item.y - item.radius/3, item.radius/3, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        ctx.restore();
+                    }
+                }
+            }
+        }
+        
+        function drawPenguin() {
+            const penguinWidth = penguinPixels[0].length;
+            const penguinHeight = penguinPixels.length;
+            const pixelSize = isMobile ? 3 : 4;
+            const startX = hook.x - (penguinWidth * pixelSize) / 2;
+            const startY = hook.y - (penguinHeight * pixelSize) / 2;
+            
+            for (let y = 0; y < penguinHeight; y++) {
+                for (let x = 0; x < penguinWidth; x++) {
+                    const pixel = penguinPixels[y][x];
+                    if (pixel !== 0) {
+                        ctx.fillStyle = penguinColors[pixel];
+                        ctx.fillRect(
+                            startX + x * pixelSize,
+                            startY + y * pixelSize,
+                            pixelSize,
+                            pixelSize
+                        );
+                    }
+                }
+            }
+        }
+        
+        // 事件监听
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', startGame);
+        
+        // 键盘控制
+        document.addEventListener('keydown', (e) => {
+            if (gameState === 'playing' && (e.code === 'Space' || e.key === ' ')) {
+                if (hook.state === 'swinging') {
+                    hook.state = 'shooting';
+                }
+            }
+        });
+        
+        // 触摸和鼠标控制
+        canvas.addEventListener('click', () => {
+            if (gameState === 'playing') {
+                if (hook.state === 'swinging') {
+                    hook.state = 'shooting';
+                }
+            }
+        });
+        
+        // 防止触摸滚动
+        document.addEventListener('touchmove', (e) => {
+            if (gameState === 'playing') {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    </script>
+</body>
+</html>
